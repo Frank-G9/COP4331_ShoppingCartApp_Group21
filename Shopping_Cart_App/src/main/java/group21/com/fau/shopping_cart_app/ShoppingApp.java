@@ -53,6 +53,7 @@ class Product {
     private String name;
     private double price;
     private int quantity;
+    private List<Review> reviews = new ArrayList<>();
 
     public Product(int productId, String name, double price, int quantity) {
         this.productId = productId;
@@ -80,13 +81,40 @@ class Product {
     public void setQuantity(int quantity) {
         this.quantity = quantity;
     }
+
+    public List<Review> getReviews() {
+        return reviews;
+    }
+
+    public void addReview(String reviewer, String comment) {
+        Review review = new Review(reviewer, comment);
+        reviews.add(review);
+    }
+}
+
+class Review {
+    private String reviewer;
+    private String comment;
+
+    public Review(String reviewer, String comment) {
+        this.reviewer = reviewer;
+        this.comment = comment;
+    }
+
+    public String getReviewer() {
+        return reviewer;
+    }
+
+    public String getComment() {
+        return comment;
+    }
 }
 
 class Inventory {
     private static final List<Product> products = new ArrayList<>();
 
     static {
-        //Sample
+        // Sample
         products.add(new Product(1, "A", 10.0, 20));
         products.add(new Product(2, "B", 15.0, 15));
         products.add(new Product(3, "C", 20.0, 10));
@@ -94,6 +122,15 @@ class Inventory {
 
     public static List<Product> getProducts() {
         return products;
+    }
+
+    public static Product getProductById(int productId) {
+        for (Product product : products) {
+            if (product.getProductId() == productId) {
+                return product;
+            }
+        }
+        return null;
     }
 
     public static void updateProductQuantity(int productId, int newQuantity) {
@@ -212,7 +249,8 @@ class LoginFrame extends JFrame {
 class ProductBrowseFrame extends JFrame {
     private User user;
     private JLabel totalLabel;
-    private JTable inventoryTable;  // Declare inventoryTable as a class field
+    private JTable inventoryTable;
+    private JTextArea reviewTextArea;
 
     public ProductBrowseFrame(User user) {
         this.user = user;
@@ -223,9 +261,13 @@ class ProductBrowseFrame extends JFrame {
 
         JPanel panel = new JPanel(new BorderLayout());
 
-        inventoryTable = createInventoryTable();  
+        inventoryTable = createInventoryTable();
         JScrollPane scrollPane = new JScrollPane(inventoryTable);
         panel.add(scrollPane, BorderLayout.CENTER);
+
+        reviewTextArea = new JTextArea();
+        JScrollPane reviewScrollPane = new JScrollPane(reviewTextArea);
+        panel.add(reviewScrollPane, BorderLayout.EAST);
 
         JButton addToCartButton = new JButton("Add to Cart");
         addToCartButton.addActionListener(e -> addToCart());
@@ -237,6 +279,10 @@ class ProductBrowseFrame extends JFrame {
         JButton viewDetailsButton = new JButton("View Details");
         viewDetailsButton.addActionListener(e -> viewProductDetails());
         panel.add(viewDetailsButton, BorderLayout.WEST);
+
+        JButton checkoutButton = new JButton("Checkout");
+        checkoutButton.addActionListener(e -> checkout());
+        panel.add(checkoutButton, BorderLayout.EAST);
 
         add(panel);
     }
@@ -256,11 +302,9 @@ class ProductBrowseFrame extends JFrame {
 
         String[] columnNames = {"ID", "Name", "Price", "Quantity"};
 
-
         DefaultTableModel tableModel = new DefaultTableModel(data, columnNames) {
             @Override
             public boolean isCellEditable(int row, int column) {
- 
                 return false;
             }
         };
@@ -306,9 +350,23 @@ class ProductBrowseFrame extends JFrame {
         double productPrice = (double) inventoryTable.getValueAt(selectedRow, 2);
         int productQuantity = (int) inventoryTable.getValueAt(selectedRow, 3);
 
-        Product selectedProduct = new Product(productId, productName, productPrice, productQuantity);
+        Product selectedProduct = Inventory.getProductById(productId);
 
-        JOptionPane.showMessageDialog(this, getProductDetails(selectedProduct));
+        if (selectedProduct != null) {
+            JOptionPane.showMessageDialog(this, getProductDetails(selectedProduct));
+            updateReviewsTextArea(selectedProduct);
+        } else {
+            JOptionPane.showMessageDialog(this, "Invalid product selection");
+        }
+    }
+
+    private void updateReviewsTextArea(Product product) {
+        StringBuilder reviewsBuilder = new StringBuilder("Seller Reviews:\n");
+        for (Review review : product.getReviews()) {
+            reviewsBuilder.append("Reviewer: ").append(review.getReviewer()).append("\n")
+                          .append("Comment: ").append(review.getComment()).append("\n\n");
+        }
+        reviewTextArea.setText(reviewsBuilder.toString());
     }
 
     private String getProductDetails(Product product) {
@@ -330,12 +388,24 @@ class ProductBrowseFrame extends JFrame {
     private void updateCartTotal() {
         double totalAmount = ShoppingCart.calculateTotal();
 
-        
         if (totalLabel != null) {
             totalLabel.setText("Total: $" + totalAmount);
         }
     }
 
+    private void checkout() {
+        double totalAmount = ShoppingCart.calculateTotal();
+
+        if (totalAmount > 0) {
+            // Perform checkout logic (e.g., update inventory, clear the cart, etc.)
+            // For now, let's display a message indicating the total amount
+            JOptionPane.showMessageDialog(this, "Checkout successful! Total amount: $" + totalAmount);
+            ShoppingCart.getCartItems().clear();
+            updateCartTotal();
+        } else {
+            JOptionPane.showMessageDialog(this, "Your cart is empty. Add items before checking out.");
+        }
+    }
 }
 
 class UserRegistrationFrame extends JFrame {
