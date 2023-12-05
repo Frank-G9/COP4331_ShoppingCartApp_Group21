@@ -34,9 +34,17 @@ class User {
     private String username;
     private String password;
 
-    public User(String username, String password) {
+    private UserRole role; // New attribute for user role
+
+    public enum UserRole {
+        BUYER, SELLER
+    }
+
+    public User(String username, String password, UserRole role) {
         this.username = username;
         this.password = password;
+        this.role = role;
+
     }
 
     public String getUsername() {
@@ -45,6 +53,10 @@ class User {
 
     public String getPassword() {
         return password;
+    }
+
+    public UserRole getRole() {
+        return role;
     }
 }
 
@@ -228,6 +240,7 @@ class LoginFrame extends JFrame {
         return null;
     }
 
+
     private void openProductBrowseWindow(User user) {
         ProductBrowseFrame productBrowseFrame = new ProductBrowseFrame(user);
         productBrowseFrame.setVisible(true);
@@ -240,10 +253,7 @@ class LoginFrame extends JFrame {
 
     // Sample hardcoded users for simplicity (replace with database storage)
     static final List<User> users = new ArrayList<>();
-    static {
-        users.add(new User("customer", "password"));
-        users.add(new User("seller", "password"));
-    }
+
 }
 
 class ProductBrowseFrame extends JFrame {
@@ -284,8 +294,25 @@ class ProductBrowseFrame extends JFrame {
         checkoutButton.addActionListener(e -> checkout());
         panel.add(checkoutButton, BorderLayout.EAST);
 
+        // Panel for top buttons
+        JPanel topButtonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+
+        JButton logoutButton = new JButton("Logout");
+        logoutButton.addActionListener(e -> logout());
+        topButtonPanel.add(logoutButton);
+
+        if (user.getRole() == User.UserRole.SELLER) {
+            JButton addProductButton = new JButton("Add New Product");
+            addProductButton.addActionListener(e -> addNewProduct());
+            topButtonPanel.add(addProductButton);
+        }
+
+        // Adding the top button panel to the NORTH region
+        panel.add(topButtonPanel, BorderLayout.NORTH);
+
         add(panel);
     }
+
 
     private JTable createInventoryTable() {
         List<Product> products = Inventory.getProducts();
@@ -358,6 +385,15 @@ class ProductBrowseFrame extends JFrame {
         } else {
             JOptionPane.showMessageDialog(this, "Invalid product selection");
         }
+        int response = JOptionPane.showConfirmDialog(this, getProductDetails(selectedProduct) +
+                "\n\nWould you like to leave a review?", "Product Details", JOptionPane.YES_NO_OPTION);
+
+        if (response == JOptionPane.YES_OPTION) {
+            String review = JOptionPane.showInputDialog("Enter your review:");
+            if (review != null && !review.trim().isEmpty()) {
+                selectedProduct.addReview(user.getUsername(), review);
+            }
+        }
     }
 
     private void updateReviewsTextArea(Product product) {
@@ -370,10 +406,19 @@ class ProductBrowseFrame extends JFrame {
     }
 
     private String getProductDetails(Product product) {
-        return "Product ID: " + product.getProductId() + "\n"
-                + "Name: " + product.getName() + "\n"
-                + "Price: $" + product.getPrice() + "\n"
-                + "Quantity available: " + product.getQuantity();
+        StringBuilder details = new StringBuilder();
+        details.append("Product ID: ").append(product.getProductId()).append("\n")
+                .append("Name: ").append(product.getName()).append("\n")
+                .append("Price: $").append(product.getPrice()).append("\n")
+                .append("Quantity available: ").append(product.getQuantity()).append("\n\n")
+                .append("Reviews:\n");
+
+        for (Review review : product.getReviews()) {
+            details.append("Reviewer: ").append(review.getReviewer()).append("\n")
+                    .append("Comment: ").append(review.getComment()).append("\n\n");
+        }
+
+        return details.toString();
     }
 
     private int askQuantityToAdd(Product product) {
@@ -393,24 +438,71 @@ class ProductBrowseFrame extends JFrame {
         }
     }
 
+    private void addNewProduct() {
+        if (user.getRole() != User.UserRole.SELLER) {
+            JOptionPane.showMessageDialog(this, "Only sellers can add products.");
+            return;
+        }
+
+        // Example of gathering product details (You should implement a more robust method)
+        String name = JOptionPane.showInputDialog("Enter product name:");
+        double price = Double.parseDouble(JOptionPane.showInputDialog("Enter product price:"));
+        int quantity = Integer.parseInt(JOptionPane.showInputDialog("Enter product quantity:"));
+
+        // Generate a new product ID
+        int newProductId = Inventory.getProducts().size() + 1;
+
+        Inventory.addProduct(new Product(newProductId, name, price, quantity));
+        JOptionPane.showMessageDialog(this, "Product added successfully.");
+
+        refreshInventoryTable();
+    }
+
+    private void refreshInventoryTable() {
+        DefaultTableModel model = (DefaultTableModel) inventoryTable.getModel();
+        model.setRowCount(0); // Clear existing data
+
+        for (Product product : Inventory.getProducts()) {
+            model.addRow(new Object[]{product.getProductId(), product.getName(), product.getPrice(), product.getQuantity()});
+        }
+    }
+
     private void checkout() {
         double totalAmount = ShoppingCart.calculateTotal();
 
         if (totalAmount > 0) {
-            // Perform checkout logic (e.g., update inventory, clear the cart, etc.)
-            // For now, let's display a message indicating the total amount
-            JOptionPane.showMessageDialog(this, "Checkout successful! Total amount: $" + totalAmount);
+            for (Map.Entry<Product, Integer> entry : ShoppingCart.getCartItems().entrySet()) {
+                Product product = entry.getKey();
+                int purchasedQuantity = entry.getValue();
+                int newQuantity = product.getQuantity() - purchasedQuantity;
+                Inventory.updateProductQuantity(product.getProductId(), newQuantity);
+            }
+
             ShoppingCart.getCartItems().clear();
             updateCartTotal();
+            JOptionPane.showMessageDialog(this, "Checkout successful! Total amount: $" + totalAmount);
         } else {
             JOptionPane.showMessageDialog(this, "Your cart is empty. Add items before checking out.");
         }
+
+        refreshInventoryTable();
+
     }
+
+    private void logout() {
+        this.dispose(); // Close the current window
+        LoginFrame loginFrame = new LoginFrame();
+        loginFrame.setVisible(true); // Open the login window
+    }
+
+
 }
 
 class UserRegistrationFrame extends JFrame {
     private JTextField usernameField;
     private JPasswordField passwordField;
+
+    private JComboBox<User.UserRole> roleComboBox;
 
     public UserRegistrationFrame() {
         setTitle("User Registration");
@@ -418,16 +510,46 @@ class UserRegistrationFrame extends JFrame {
         setSize(300, 150);
         setLocationRelativeTo(null);
 
-        JPanel panel = new JPanel(new GridLayout(3, 2));
+        JPanel panel = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
 
-        panel.add(new JLabel("Username:"));
-        usernameField = new JTextField();
-        panel.add(usernameField);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.insets = new Insets(4, 4, 4, 4); // top, left, bottom, right padding
 
-        panel.add(new JLabel("Password:"));
-        passwordField = new JPasswordField();
-        panel.add(passwordField);
+        // Username label and text field
+        gbc.gridx = 0; // column
+        gbc.gridy = 0; // row
+        panel.add(new JLabel("Username:"), gbc);
 
+        gbc.gridx = 1;
+        gbc.gridy = 0;
+        usernameField = new JTextField(10);
+        panel.add(usernameField, gbc);
+
+        // Password label and text field
+        gbc.gridx = 0;
+        gbc.gridy = 1;
+        panel.add(new JLabel("Password:"), gbc);
+
+        gbc.gridx = 1;
+        gbc.gridy = 1;
+        passwordField = new JPasswordField(10);
+        panel.add(passwordField, gbc);
+
+        // Role label and combo box
+        gbc.gridx = 0;
+        gbc.gridy = 2;
+        panel.add(new JLabel("Role:"), gbc);
+
+        gbc.gridx = 1;
+        gbc.gridy = 2;
+        roleComboBox = new JComboBox<>(User.UserRole.values());
+        panel.add(roleComboBox, gbc);
+
+        // Register button
+        gbc.gridx = 0;
+        gbc.gridy = 3;
+        gbc.gridwidth = 2; // Span across two columns
         JButton registerButton = new JButton("Register");
         registerButton.addActionListener(e -> {
             String username = usernameField.getText();
@@ -439,10 +561,11 @@ class UserRegistrationFrame extends JFrame {
                 JOptionPane.showMessageDialog(this, "Username already exists. Please choose another.");
             }
         });
-        panel.add(registerButton);
+        panel.add(registerButton, gbc);
 
         add(panel);
     }
+
 
     private boolean registerUser(String username, String password) {
         for (User existingUser : LoginFrame.users) {
@@ -451,7 +574,9 @@ class UserRegistrationFrame extends JFrame {
             }
         }
 
-        LoginFrame.users.add(new User(username, password));
+        User.UserRole selectedRole = (User.UserRole) roleComboBox.getSelectedItem();
+        LoginFrame.users.add(new User(username, password, selectedRole)); // Include role in user creation
         return true;
+
     }
 }
